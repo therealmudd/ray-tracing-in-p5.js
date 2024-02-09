@@ -2,10 +2,8 @@ class Camera{
   constructor(){
     this.aspect_ratio = 1.0; // Ratio of image width over height
     this.image_width = 100; // Rendered image width in pixel count
-    this.samples_per_pixel = 40; // Count of random samples for each pixel
-  }
-  
-  initialize(){
+    this.samples_per_pixel = 10; // Count of random samples for each pixel
+    this.max_depth = 5; // Maximum number of ray bounces into scene
     
     this.aspect_ratio = 16 / 9;
     this.image_width = 400;
@@ -18,7 +16,9 @@ class Camera{
     this.viewport_height = 2.0;
     this.viewport_width = this.viewport_height * (this.image_width / this.image_height);
     this.center = new p5.Vector(0, 0, 0);
-
+  }
+  
+  initialize(){
     // Calulate the vectors across the horizontal and down the vertical viewport edges
     this.viewport_u = new p5.Vector(this.viewport_width, 0, 0);
     this.viewport_v = new p5.Vector(0, -this.viewport_height, 0);
@@ -39,12 +39,13 @@ class Camera{
       this.viewport_upper_left, 
       p5.Vector.mult( p5.Vector.add(this.pixel_delta_u, this.pixel_delta_v), 0.5 )
     );
+    
+    createCanvas(this.image_width, this.image_height);
   }
   
   render(world){
-    this.initialize();
     
-    createCanvas(this.image_width, this.image_height);
+    this.initialize();
 
     pixelDensity(1);
     loadPixels();
@@ -54,35 +55,33 @@ class Camera{
         let pixel_color = new p5.Vector(0, 0, 0);
         for (let sample = 0; sample < this.samples_per_pixel; sample++){
           let r = this.get_ray(i, j);
-          pixel_color.add(this.ray_color(r, world));
+          pixel_color.add(this.ray_color(r, this.max_depth, world));
         }
         
         let scl = 1.0 / this.samples_per_pixel;
 
         let index = (j * width + i) * 4;
-        pixels[index + 0] = pixel_color.x * 255 * scl;
-        pixels[index + 1] = pixel_color.y * 255 * scl;
-        pixels[index + 2] = pixel_color.z * 255 * scl;
+        pixels[index + 0] = sqrt(pixel_color.x * scl) * 255;
+        pixels[index + 1] = sqrt(pixel_color.y * scl) * 255;
+        pixels[index + 2] = sqrt(pixel_color.z * scl) * 255;
         pixels[index + 3] = 255;
       }
     }
     updatePixels();
   }
   
-  ray_color(r, world){
+  ray_color(r, depth, world){
+    if (depth <= 0) return new p5.Vector(0, 0, 0);
+    
     let rec = world.hit(r);
+    
     if (rec.hitAnything){
-      let direction = random_on_hemisphere(rec.nrml);
-      
-      return p5.Vector.mult(
-        this.ray_color(new Ray(rec.p, direction), world),
-        0.5
-      );
-      
-      // return p5.Vector.mult(
-      //   p5.Vector.add(rec.nrml, new p5.Vector(1, 1, 1)),
-      //   0.5
-      // );
+      let scattered = rec.material.scatter(r, rec);
+      if (scattered){
+        let attenuation = rec.material.attenuation;
+        return p5.Vector.mult(attenuation, this.ray_color(scattered, depth-1, world));
+      }
+      return new p5.Vector(0, 0, 0);
     }
 
     let unit_direction = p5.Vector.normalize(r.direction);
@@ -142,6 +141,7 @@ class HitRecord{
     this.t = t;
     this.front_face = null;
     this.hitAnything = false;
+    this.material = null;
   }
   
   set_face_normal(r, outward_normal){
@@ -150,10 +150,51 @@ class HitRecord{
   }
 }
 
+class Lambertian{
+  constructor(a){
+    this.albedo = a;
+    this.attenuation = this.albedo;
+  }
+  
+  scatter(r_in, rec){
+    let scatter_direction = p5.Vector.add(rec.nrml, random_unit_vector());
+    
+    if (is_near_zero(scatter_direction)){
+      scatter_direction = rec.nrml;
+    }
+    
+    let scattered = new Ray(rec.p, scatter_direction);
+    this.attenuation = this.albedo;
+    return scattered;
+  }
+}
+
+class Metal{
+  constructor(a, f){
+    this.albedo = a;
+    this.fuzz = f < 1 ? f : 1;
+    this.attenuation = this.albedo;
+  }
+  
+  scatter(r_in, rec){
+    let reflected = reflect(r_in.direction, rec.nrml);
+    let direction = p5.Vector.add(
+      p5.Vector.add(reflected, p5.Vector.mult(random_unit_vector(), self.fuzz))
+    );
+    this.attenuation = this.albedo;
+    let scattered = new Ray(rec.p, direction);
+    if (p5.Vector.dot(scattered.direction, rec.nrml) > 0){
+      return scattered;
+    }
+  }
+  
+}
+
 class Sphere{
-  constructor(center, radius){
+  constructor(center, radius, material){
     this.center = center;
     this.radius = radius;
+    this.material = material;
   }
   
   hit(r){
@@ -168,7 +209,7 @@ class Sphere{
     if (delta >= 0){
       let dst = ( -b - sqrt(delta) ) / (2*a);
       
-      if (dst >= 0){
+      if (dst >= 0.001){
         rec.hitAnything = true;
         rec.t = dst;
         rec.p = r.at(rec.t);
@@ -176,6 +217,7 @@ class Sphere{
           p5.Vector.sub(rec.p, this.center)
         );
         rec.set_face_normal(r, outward_nrml);
+        rec.material = this.material;
       }
     }
   

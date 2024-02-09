@@ -5,15 +5,24 @@
 // Ray Tracing in One Weekend
 // https://raytracing.github.io/books/RayTracingInOneWeekend.html
 
+var cam;
+var world;
 
 function setup() {  
   
-  const world = new HittableList();
-
-  world.add(new Sphere(new p5.Vector(0, 0, -1), 0.5));
-  world.add(new Sphere(new p5.Vector(0, -100.5, -1), 100));
+  world = new HittableList();
   
-  const cam = new Camera();
+  const material_ground = new Lambertian(new p5.Vector(0.8, 0.8, 0.0));
+  const material_center = new Lambertian(new p5.Vector(0.7, 0.3, 0.3));
+  const material_left = new Metal(new p5.Vector(0.8, 0.8, 0.8));
+  const material_right = new Metal(new p5.Vector(0.8, 0.6, 0.2));
+  
+  world.add(new Sphere(new p5.Vector( 0.0, -100.5, -1.0), 100.0, material_ground));
+  world.add(new Sphere(new p5.Vector( 0.0,    0.0, -1.0),   0.5, material_center));
+  world.add(new Sphere(new p5.Vector(-1.0,    0.0, -1.0),   0.5, material_left));
+  world.add(new Sphere(new p5.Vector( 1.0,    0.0, -1.0),   0.5, material_right));
+  
+  cam = new Camera();
   
   cam.aspect_ratio = 16.0 / 9.0;
   cam.image_width = 400;
@@ -58,4 +67,16 @@ function random_on_hemisphere(nrml){
     return on_unit_sphere;
   else
     return p5.Vector.mult(on_unit_sphere, -1);
+}
+
+function reflect(v, n){
+  return p5.Vector.sub(
+    v,
+    p5.Vector.mult(n, 2*p5.Vector.dot(v, n))
+  );
+}
+
+function is_near_zero(v){
+  const s = 1e-8;
+  return (abs(v.x) < s) && (abs(v.y) < s) && (abs(v.z) < s);
 }
