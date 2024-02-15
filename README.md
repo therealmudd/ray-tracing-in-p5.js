@@ -6,6 +6,8 @@ Here I used this library to create a simple ray tracer.
 
 ![A render of 3 spheres](render.png)
 
+This project follows the tutorial [Ray Tracing in One Weekend](https://raytracing.github.io/books/RayTracingInOneWeekend.html) which is originally intended for C++ because of its speed.
+
 ## Features
 
 The ray tracer features:
